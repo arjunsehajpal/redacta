@@ -19,14 +19,10 @@ class SpaCyPIIDetector:
     EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
 
     # Updated: US Phone Number Pattern (10-digit, optional +1 or 1)
-    US_PHONE_PATTERN = re.compile(
-        r"\b(?:\+?1[-.]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"
-    )
+    US_PHONE_PATTERN = re.compile(r"\b(?:\+?1[-.]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")
 
     # Added: Indian Phone Number Pattern (10-digit mobile, variable-length landline)
-    INDIAN_PHONE_PATTERN = re.compile(
-        r"^(?:(?:\+91|0)[-.\s]?)?([6-9]\d{9}|[2-8]\d{2,4}[-.\s]?\d{6,7})$"
-    )
+    INDIAN_PHONE_PATTERN = re.compile(r"^(?:(?:\+91|0)[-.\s]?)?([6-9]\d{9}|[2-8]\d{2,4}[-.\s]?\d{6,7})$")
 
     # -------------------------------------
 
