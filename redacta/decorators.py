@@ -1,17 +1,35 @@
+import json
+import logging
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from .adapters.openai_responses import (
-    extract_input_from_kwargs,
-    get_output_text,
-    set_input_in_kwargs,
-    set_output_text,
-)
+from .adapters.openai_responses import extract_input_from_kwargs, get_output_text, set_input_in_kwargs, set_output_text
 from .config import get_settings
 from .core.pipeline import Pipeline, build_default_pipeline
 
+logger = logging.getLogger("redacta.pii")
 
-def pii_protect_openai_responses(pipeline: Optional[Pipeline] = None) -> Callable[[Callable], Callable]:
+
+_MISSING = object()
+
+
+def _log_verbose(stage: str, session_id: str, *, text=_MISSING, entities=_MISSING) -> None:
+    payload: dict[str, Any] = {"stage": stage, "session_id": session_id}
+    if text is not _MISSING:
+        payload["text"] = text
+    if entities is not _MISSING:
+        payload["entities"] = [
+            {"label": entity.label, "start": entity.start, "end": entity.end, "text": entity.text}
+            for entity in entities
+        ]
+    logger.info(json.dumps(payload))
+
+
+def pii_protect_openai_responses(
+    pipeline: Optional[Pipeline] = None,
+    *,
+    verbose: Optional[bool] = None,
+) -> Callable[[Callable], Callable]:
     """Decorator to add PII protection to OpenAI Responses API calls.
 
     This decorator intercepts calls to OpenAI's responses API, sanitizes
@@ -20,7 +38,9 @@ def pii_protect_openai_responses(pipeline: Optional[Pipeline] = None) -> Callabl
 
     Args:
         pipeline: Optional Pipeline instance. If None, a default pipeline
-                 will be created.
+            will be created.
+        verbose: Override verbose logging behavior. If omitted, falls back
+            to the pipeline's verbose flag (default False).
 
     Returns:
         Decorator function
@@ -47,7 +67,7 @@ def pii_protect_openai_responses(pipeline: Optional[Pipeline] = None) -> Callabl
     settings = get_settings()
 
     if pipeline is None:
-        pipeline = build_default_pipeline()
+        pipeline = build_default_pipeline(verbose=verbose if verbose is not None else False)
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)
@@ -64,9 +84,29 @@ def pii_protect_openai_responses(pipeline: Optional[Pipeline] = None) -> Callabl
 
             set_input_in_kwargs(kwargs, sanitized_result.sanitized_text)
 
+            effective_verbose = verbose if verbose is not None else getattr(pipeline, "verbose", False)
+            if effective_verbose:
+                _log_verbose(
+                    "sanitize_prompt",
+                    sanitized_result.session_id,
+                    text=sanitized_result.sanitized_text,
+                )
+                _log_verbose(
+                    "detected_entities",
+                    sanitized_result.session_id,
+                    entities=sanitized_result.entities,
+                )
+
             response = func(*args, **kwargs)
 
             output_text = get_output_text(response)
+
+            if effective_verbose:
+                _log_verbose(
+                    "llm_response_placeholders",
+                    sanitized_result.session_id,
+                    text=output_text,
+                )
 
             if output_text is not None:
                 restored_text = pipeline.restore_response(output_text, sanitized_result)

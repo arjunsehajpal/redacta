@@ -34,3 +34,4 @@ class SanitizedResult:
     mapping: dict[str, bytes]
     original_text: str = ""
     session_id: str = field(default_factory=lambda: uuid4().hex)
+    entities: list[EntitySpan] = field(default_factory=list)

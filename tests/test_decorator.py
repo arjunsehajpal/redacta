@@ -1,3 +1,5 @@
+import json
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -115,3 +117,58 @@ def test_decorator_with_disabled_protection(pipeline, monkeypatch):
     response = mock_api_call(mock_client, model="gpt-4", input="Contact john@example.com")
 
     assert response.output_text == "Contact john@example.com"
+
+
+def test_verbose_logging_emits_three_entries_in_order(pipeline, caplog):
+    """Ensure verbose logging surfaces the three lifecycle stages."""
+    pipeline.verbose = True
+    mock_client = MagicMock()
+
+    @pii_protect_openai_responses(pipeline=pipeline)
+    def mock_api_call(client, **kwargs):
+        return MockResponse(f"Echo: {kwargs['input']}")
+
+    with caplog.at_level(logging.INFO, logger="redacta.pii"):
+        mock_api_call(mock_client, model="gpt-4", input="Email alice@example.com today.")
+
+    records = [rec for rec in caplog.records if rec.name == "redacta.pii"]
+    assert len(records) == 3
+
+    payloads = [json.loads(record.message) for record in records]
+    assert [payload["stage"] for payload in payloads] == [
+        "sanitize_prompt",
+        "detected_entities",
+        "llm_response_placeholders",
+    ]
+    assert "@@" in payloads[0]["text"]
+    assert isinstance(payloads[1]["entities"], list)
+    assert all({"label", "start", "end", "text"} <= entity.keys() for entity in payloads[1]["entities"])
+    assert "@@" in payloads[2]["text"]
+
+
+def test_decorator_verbose_argument_overrides_pipeline(pipeline, caplog):
+    """Decorator-level verbose flag should override pipeline defaults."""
+    mock_client = MagicMock()
+
+    @pii_protect_openai_responses(pipeline=pipeline, verbose=True)
+    def verbose_api_call(client, **kwargs):
+        return MockResponse(f"Echo {kwargs['input']}")
+
+    with caplog.at_level(logging.INFO, logger="redacta.pii"):
+        verbose_api_call(mock_client, model="gpt-4", input="Contact bob@example.com")
+
+    records = [rec for rec in caplog.records if rec.name == "redacta.pii"]
+    assert len(records) == 3
+
+    caplog.clear()
+    pipeline.verbose = True
+
+    @pii_protect_openai_responses(pipeline=pipeline, verbose=False)
+    def quiet_api_call(client, **kwargs):
+        return MockResponse(kwargs["input"])
+
+    with caplog.at_level(logging.INFO, logger="redacta.pii"):
+        quiet_api_call(mock_client, model="gpt-4", input="Email carol@example.com")
+
+    quiet_records = [rec for rec in caplog.records if rec.name == "redacta.pii"]
+    assert len(quiet_records) == 0

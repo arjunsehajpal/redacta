@@ -12,6 +12,7 @@ Redacta automatically detects and redacts personally identifiable information (P
 - **Deterministic Placeholders** - Consistent placeholder generation (e.g., `@@EMAIL_1@@`)
 - **Decorator Pattern** - Simple integration via Python decorators
 - **Configurable** - Environment-based configuration with sensible defaults
+- **Verbose Logging** - Optional JSON logs of sanitized prompts, detected entities, and placeholder responses
 
 ## Installation
 
@@ -113,6 +114,36 @@ export REDACTA_LOCAL_KEY_PATH=./redacta.key
 ```
 
 ## Advanced Usage
+
+### Verbose Logging
+
+Enable verbose JSON logging to inspect the sanitize/restore lifecycle during debugging. You can enable it when creating the pipeline or override it on a per-decorator basis.
+
+```python
+import logging
+from redacta import build_default_pipeline, pii_protect_openai_responses
+
+logging.basicConfig(level=logging.INFO)
+
+pipeline = build_default_pipeline(verbose=True)
+
+@pii_protect_openai_responses(pipeline=pipeline)
+def ask(client, **kwargs):
+    return client.responses.create(**kwargs)
+
+# Override the shared pipeline if needed:
+@pii_protect_openai_responses(pipeline=pipeline, verbose=False)
+def quiet_call(client, **kwargs):
+    return client.responses.create(**kwargs)
+```
+
+Logs are emitted to the `redacta.pii` logger at `INFO` level as single-line JSON entries that share a `session_id` for easy correlation:
+
+```json
+{"stage":"sanitize_prompt","text":"Email @@PERSON_1@@ at @@EMAIL_1@@","session_id":"a3f4..."}
+{"stage":"detected_entities","session_id":"a3f4...","entities":[{"label":"PERSON","start":6,"end":14,"text":"John Doe"},{"label":"EMAIL","start":18,"end":33,"text":"john@example.com"}]}
+{"stage":"llm_response_placeholders","session_id":"a3f4...","text":"I'll email @@EMAIL_1@@ today"}
+```
 
 ### Manual Pipeline Usage
 

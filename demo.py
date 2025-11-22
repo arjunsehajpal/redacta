@@ -1,13 +1,18 @@
+import logging
+
 from redacta.core.pipeline import build_default_pipeline
 
 
-def demo_basic_usage():
+def demo_basic_usage(verbose: bool = False):
     """Demonstrate basic PII detection and restoration."""
     print("=" * 60)
     print("Redacta Demo - PII Redaction & Restoration")
     print("=" * 60)
 
-    pipeline = build_default_pipeline()
+    pipeline = build_default_pipeline(verbose=verbose)
+
+    if verbose:
+        print("Verbose logging is enabled. Check 'redacta.pii' logger output for JSON traces.")
 
     test_prompts = [
         "Contact John Doe at john@example.com or call 555-123-4567.",
@@ -70,6 +75,7 @@ def demo_openai_style():
     print("=" * 60)
 
     from unittest.mock import MagicMock
+
     from redacta import pii_protect_openai_responses
 
     class MockResponse:
@@ -77,11 +83,17 @@ def demo_openai_style():
             self.output_text = output_text
 
     mock_client = MagicMock()
+    pipeline = build_default_pipeline(verbose=True)
 
-    @pii_protect_openai_responses()
+    @pii_protect_openai_responses(pipeline=pipeline)
     def mock_api_call(client, **kwargs):
         input_text = kwargs.get("input", "")
         return MockResponse(f"Echo: {input_text}")
+
+    @pii_protect_openai_responses(pipeline=pipeline, verbose=False)
+    def mock_api_call_quiet(client, **kwargs):
+        input_text = kwargs.get("input", "")
+        return MockResponse(f"Echo (quiet): {input_text}")
 
     test_input = "Please contact Alice Cooper at alice@example.com"
 
@@ -90,10 +102,15 @@ def demo_openai_style():
     print(f"Output from decorator: {response.output_text}")
     print("\nNote: Email was protected during the 'API call' and restored in the output")
 
+    quiet_response = mock_api_call_quiet(mock_client, model="gpt-4", input=test_input)
+    print("\nQuiet decorator output (verbose override off):")
+    print(quiet_response.output_text)
+
 
 if __name__ == "__main__":
     try:
-        demo_basic_usage()
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+        demo_basic_usage(verbose=True)
         demo_encryption()
         demo_openai_style()
 

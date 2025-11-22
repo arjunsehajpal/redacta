@@ -32,6 +32,8 @@ def test_sanitize_simple_pii(pipeline):
     assert "john@example.com" not in result.sanitized_text
     assert "@@EMAIL" in result.sanitized_text
     assert len(result.mapping) > 0
+    assert result.entities
+    assert any(entity.label == "EMAIL" for entity in result.entities)
 
 
 def test_restore_response(pipeline):
