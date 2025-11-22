@@ -204,7 +204,7 @@ Currently supported entity types:
 
 - **PERSON** - Personal names (via spaCy NER)
 - **EMAIL** - Email addresses (via regex)
-- **PHONE** - Phone numbers (via regex, US format)
+- **PHONE** - Phone numbers via regex (US formats and Indian mobile numbers)
 
 ## Future Enhancements
 

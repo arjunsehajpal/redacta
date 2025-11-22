@@ -107,6 +107,27 @@ def test_person_detection(pipeline):
     assert "John Smith" not in result.sanitized_text or len(result.mapping) > 0
 
 
+def test_us_phone_detection(pipeline):
+    """Ensure US-format phone numbers are detected and sanitized."""
+    prompt = "Call me at 555-123-4567 for details."
+    
+    result = pipeline.sanitize_prompt(prompt)
+    
+    assert "@@PHONE_1@@" in result.sanitized_text
+    assert "555-123-4567" not in result.sanitized_text
+
+
+def test_indian_mobile_detection(pipeline):
+    """Ensure Indian mobile numbers are detected via the regex pattern."""
+    prompt = "+919876543210"
+    
+    result = pipeline.sanitize_prompt(prompt)
+    
+    assert result.sanitized_text == "@@PHONE_1@@"
+    restored = pipeline.restore_response(result.sanitized_text, result)
+    assert restored == prompt
+
+
 def test_sequential_calls_no_interference(pipeline):
     """Test that sequential sanitize/restore calls don't interfere with each other."""
     prompt1 = "Contact alice@example.com"
