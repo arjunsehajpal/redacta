@@ -51,3 +51,6 @@ redacta.key
 # OS
 .DS_Store
 Thumbs.db
+
+# Self
+spec
