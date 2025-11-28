@@ -1,3 +1,3 @@
-from .local import LocalKMS
+from redacta.kms.local import LocalKMS
 
 __all__ = ["LocalKMS"]

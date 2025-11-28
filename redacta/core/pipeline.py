@@ -1,9 +1,9 @@
-from ..config import get_settings
-from ..kms import LocalKMS
-from ..types import SanitizedResult
-from .mapping_store import MappingStore
-from .pii_spacy import SpaCyPIIDetector
-from .placeholders import replace_with_placeholders, restore_from_placeholders
+from redacta.config import get_settings
+from redacta.kms import LocalKMS
+from redacta.types import SanitizedResult
+from redacta.core.mapping_store import MappingStore
+from redacta.core.pii_spacy import SpaCyPIIDetector
+from redacta.core.placeholders import replace_with_placeholders, restore_from_placeholders
 
 
 class Pipeline:

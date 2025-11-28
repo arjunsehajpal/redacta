@@ -1,7 +1,7 @@
 import re
 from typing import Pattern
 
-from ..types import EntitySpan
+from redacta.types import EntitySpan
 
 
 def replace_with_placeholders(text: str, entities: list[EntitySpan]) -> tuple[str, dict[str, str]]:

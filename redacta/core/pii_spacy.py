@@ -4,7 +4,7 @@ from typing import Optional
 import spacy
 from spacy.language import Language
 
-from ..types import EntitySpan
+from redacta.types import EntitySpan
 
 
 class SpaCyPIIDetector:
