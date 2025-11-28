@@ -3,7 +3,12 @@ import logging
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from redacta.adapters.openai_responses import extract_input_from_kwargs, get_output_text, set_input_in_kwargs, set_output_text
+from redacta.adapters.openai_responses import (
+    extract_input_from_kwargs,
+    get_output_text,
+    set_input_in_kwargs,
+    set_output_text,
+)
 from redacta.config import get_settings
 from redacta.core.pipeline import Pipeline, build_default_pipeline
 
