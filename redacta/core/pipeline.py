@@ -3,7 +3,7 @@ from redacta.core.mapping_store import MappingStore
 from redacta.core.pii_spacy import SpaCyPIIDetector
 from redacta.core.placeholders import replace_with_placeholders, restore_from_placeholders
 from redacta.kms import LocalKMS
-from redacta.types import SanitizedResult
+from redacta.types import SanitizedChatResult, SanitizedResult
 
 
 class Pipeline:
@@ -34,22 +34,30 @@ class Pipeline:
         self.mapping_store = mapping_store
         self.verbose = verbose
 
-    def sanitize_prompt(self, prompt: str) -> SanitizedResult:
+    def sanitize_prompt(
+        self,
+        prompt: str,
+        *,
+        session_id: str | None = None,
+        label_counters: dict[str, int] | None = None,
+    ) -> SanitizedResult:
         """Sanitize a prompt by detecting and replacing PII.
 
         Args:
             prompt: The original prompt text
+            session_id: Optional session id to reuse across multiple sanitizations
+            label_counters: Optional shared label counters to keep placeholder numbering continuous
 
         Returns:
             SanitizedResult with sanitized text and encrypted mappings
         """
-        from uuid import uuid4
-
         entities = self.detector.detect(prompt)
 
-        sanitized_text, plaintext_mapping = replace_with_placeholders(prompt, entities)
+        sanitized_text, plaintext_mapping = replace_with_placeholders(prompt, entities, label_counters)
 
-        session_id = uuid4().hex
+        from uuid import uuid4
+
+        session_id = session_id or uuid4().hex
         encrypted_mapping: dict[str, bytes] = {}
         for placeholder, original_value in plaintext_mapping.items():
             encrypted_value = self.kms.encrypt(original_value.encode("utf-8"))
@@ -63,6 +71,30 @@ class Pipeline:
             original_text=prompt,
             session_id=session_id,
             entities=entities,
+        )
+
+    def sanitize_messages(self, messages: list[str]) -> SanitizedChatResult:
+        """Sanitize a list of message contents with shared placeholders."""
+        from uuid import uuid4
+
+        label_counters: dict[str, int] = {}
+        session_id = uuid4().hex
+        sanitized_messages: list[str] = []
+        combined_mapping: dict[str, bytes] = {}
+        combined_entities = []
+
+        for message in messages:
+            sanitized = self.sanitize_prompt(message, session_id=session_id, label_counters=label_counters)
+            sanitized_messages.append(sanitized.sanitized_text)
+            combined_mapping.update(sanitized.mapping)
+            combined_entities.extend(sanitized.entities)
+
+        return SanitizedChatResult(
+            sanitized_messages=sanitized_messages,
+            mapping=combined_mapping,
+            session_id=session_id,
+            entities=combined_entities,
+            original_messages=messages,
         )
 
     def restore_response(self, text: str, sanitized_result: SanitizedResult, clear_mappings: bool = False) -> str:

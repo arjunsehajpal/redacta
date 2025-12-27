@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 from uuid import uuid4
 
 
@@ -35,3 +36,14 @@ class SanitizedResult:
     original_text: str = ""
     session_id: str = field(default_factory=lambda: uuid4().hex)
     entities: list[EntitySpan] = field(default_factory=list)
+
+
+@dataclass
+class SanitizedChatResult:
+    """Aggregated result for multi-message chat sanitization."""
+
+    sanitized_messages: list[Any]
+    mapping: dict[str, bytes]
+    session_id: str
+    entities: list[EntitySpan] = field(default_factory=list)
+    original_messages: list[Any] | None = None

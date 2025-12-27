@@ -7,7 +7,7 @@ import pytest
 from redacta.core.mapping_store import MappingStore
 from redacta.core.pii_spacy import SpaCyPIIDetector
 from redacta.core.pipeline import Pipeline
-from redacta.decorators import pii_protect_openai_responses
+from redacta.decorators import pii_protect_openai_chat, pii_protect_openai_responses
 from redacta.kms.local import LocalKMS
 
 
@@ -172,3 +172,112 @@ def test_decorator_verbose_argument_overrides_pipeline(pipeline, caplog):
 
     quiet_records = [rec for rec in caplog.records if rec.name == "redacta.pii"]
     assert len(quiet_records) == 0
+
+
+def test_chat_decorator_sanitizes_and_restores(pipeline):
+    """Chat decorator should sanitize messages and restore in response."""
+    mock_client = MagicMock()
+
+    @pii_protect_openai_chat(pipeline=pipeline, verbose=False)
+    def chat_call(client, **kwargs):
+        messages = kwargs["messages"]
+        assert "@@EMAIL_1@@" in messages[0]["content"]
+        assert "@@EMAIL_2@@" in messages[1]["content"]
+        return {"choices": [{"message": {"content": "Noted @@EMAIL_1@@ and @@EMAIL_2@@."}}]}
+
+    response = chat_call(
+        mock_client,
+        model="gpt-4",
+        messages=[
+            {"role": "user", "content": "Email alice@example.com"},
+            {"role": "assistant", "content": "Contact bob@example.com"},
+        ],
+    )
+
+    restored = response["choices"][0]["message"]["content"]
+    assert "alice@example.com" in restored
+    assert "bob@example.com" in restored
+    assert "@@EMAIL" not in restored
+
+
+def test_chat_decorator_disabled_protection(monkeypatch, pipeline):
+    """Chat decorator should pass through when protection disabled."""
+    monkeypatch.setenv("REDACTA_ENABLE_PII_PROTECTION", "false")
+    from redacta.config.settings import Settings
+
+    Settings.model_rebuild()
+
+    observed_messages = {}
+
+    @pii_protect_openai_chat(pipeline=pipeline, verbose=False)
+    def chat_call(client, **kwargs):
+        observed_messages["messages"] = kwargs["messages"]
+        return {"choices": [{"message": {"content": kwargs['messages'][0]['content']}}]}
+
+    response = chat_call(
+        MagicMock(),
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Email alice@example.com"}],
+    )
+
+    assert observed_messages["messages"][0]["content"] == "Email alice@example.com"
+    assert response["choices"][0]["message"]["content"] == "Email alice@example.com"
+
+    monkeypatch.delenv("REDACTA_ENABLE_PII_PROTECTION")
+    Settings.model_rebuild()
+
+
+def test_chat_streaming_restores_placeholders(pipeline):
+    """Streaming chat responses should restore placeholders across chunks."""
+    mock_client = MagicMock()
+
+    chunks = [
+        {"choices": [{"delta": {"content": "Hello @@EMAIL_1"}}]},
+        {"choices": [{"delta": {"content": "@@!"}}]},
+    ]
+
+    def chunk_generator():
+        for chunk in chunks:
+            yield chunk
+
+    @pii_protect_openai_chat(pipeline=pipeline, verbose=False)
+    def chat_call(client, **kwargs):
+        return chunk_generator()
+
+    stream = chat_call(
+        mock_client,
+        model="gpt-4",
+        stream=True,
+        messages=[{"role": "user", "content": "Email alice@example.com"}],
+    )
+
+    restored_chunks = list(stream)
+    restored_text = "".join(c["choices"][0]["delta"]["content"] for c in restored_chunks)
+
+    assert "alice@example.com" in restored_text
+    assert "@@EMAIL" not in restored_text
+
+
+def test_chat_decorator_verbose_default_on(pipeline, caplog):
+    """Chat decorator defaults to verbose logging unless disabled."""
+    mock_client = MagicMock()
+
+    @pii_protect_openai_chat(pipeline=pipeline)
+    def chat_call(client, **kwargs):
+        return {"choices": [{"message": {"content": "Thanks @@EMAIL_1@@!"}}]}
+
+    with caplog.at_level(logging.INFO, logger="redacta.pii"):
+        chat_call(
+            mock_client,
+            model="gpt-4",
+            messages=[{"role": "user", "content": "Email alice@example.com"}],
+        )
+
+    records = [rec for rec in caplog.records if rec.name == "redacta.pii"]
+    assert len(records) == 3
+    payloads = [json.loads(record.message) for record in records]
+    assert payloads[0]["stage"] == "sanitize_prompt"
+    assert payloads[1]["stage"] == "detected_entities"
+    assert payloads[2]["stage"] == "llm_response_placeholders"
+    assert "@@" in payloads[0]["text"]
+    assert "@@" in payloads[2]["text"]

@@ -13,6 +13,7 @@ Redacta automatically detects and redacts personally identifiable information (P
 - **Decorator Pattern** - Simple integration via Python decorators
 - **Configurable** - Environment-based configuration with sensible defaults
 - **Verbose Logging** - Optional JSON logs of sanitized prompts, detected entities, and placeholder responses
+- **Chat Completions Support** - Protects `client.chat.completions.create()` (messages + streaming)
 
 ## Installation
 
@@ -36,7 +37,7 @@ python3 -m spacy download en_core_web_sm
 
 ```python
 from openai import OpenAI
-from redacta import pii_protect_openai_responses, build_default_pipeline
+from redacta import pii_protect_openai_chat, pii_protect_openai_responses, build_default_pipeline
 
 # Build the PII protection pipeline
 pipeline = build_default_pipeline()
@@ -58,6 +59,23 @@ response = ask(
 
 print(response.output_text)
 # Output contains the original email address, restored from the placeholder
+
+# Chat Completions with messages (streaming supported)
+@pii_protect_openai_chat(pipeline=pipeline)
+def chat(client, **kwargs):
+    return client.chat.completions.create(**kwargs)
+
+response = chat(
+    client,
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "user", "content": "Email alice@example.com"},
+        {"role": "assistant", "content": "We should also loop in bob@example.com"},
+    ],
+    stream=False,  # set True for streaming responses; placeholders are restored chunk-by-chunk
+)
+
+print(response.choices[0].message.content)
 ```
 
 ## How It Works
@@ -95,7 +113,8 @@ redacta/
 ├── kms/
 │   └── local.py             # Local symmetric encryption (AES-GCM)
 └── adapters/
-    └── openai_responses.py  # OpenAI API integration helpers
+    ├── openai_responses.py  # OpenAI Responses helper
+    └── openai_chat.py       # OpenAI Chat Completions helper (messages + streaming)
 ```
 
 ## Configuration

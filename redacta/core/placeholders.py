@@ -4,12 +4,17 @@ from typing import Pattern
 from redacta.types import EntitySpan
 
 
-def replace_with_placeholders(text: str, entities: list[EntitySpan]) -> tuple[str, dict[str, str]]:
+def replace_with_placeholders(
+    text: str,
+    entities: list[EntitySpan],
+    label_counters: dict[str, int] | None = None,
+) -> tuple[str, dict[str, str]]:
     """Replace PII entities with deterministic placeholders.
 
     Args:
         text: Original text containing PII
         entities: List of detected EntitySpan objects
+        label_counters: Optional shared counters per label to continue numbering
 
     Returns:
         Tuple of (sanitized_text, placeholder_mapping)
@@ -20,17 +25,17 @@ def replace_with_placeholders(text: str, entities: list[EntitySpan]) -> tuple[st
 
     entities_sorted = sorted(entities, key=lambda e: e.start, reverse=True)
 
-    label_counters: dict[str, int] = {}
+    label_counters_to_use = label_counters if label_counters is not None else {}
     mapping: dict[str, str] = {}
     result = text
 
     for entity in entities_sorted:
         label = entity.label
-        if label not in label_counters:
-            label_counters[label] = 0
-        label_counters[label] += 1
+        if label not in label_counters_to_use:
+            label_counters_to_use[label] = 0
+        label_counters_to_use[label] += 1
 
-        placeholder = f"@@{label}_{label_counters[label]}@@"
+        placeholder = f"@@{label}_{label_counters_to_use[label]}@@"
         mapping[placeholder] = entity.text
 
         result = result[: entity.start] + placeholder + result[entity.end :]

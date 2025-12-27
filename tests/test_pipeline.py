@@ -5,6 +5,7 @@ from redacta.core.mapping_store import MappingStore
 from redacta.core.pii_spacy import SpaCyPIIDetector
 from redacta.core.pipeline import Pipeline, build_default_pipeline
 from redacta.kms.local import LocalKMS
+from redacta.types import SanitizedResult
 
 
 @pytest.fixture
@@ -232,3 +233,30 @@ def test_overlapping_sessions_no_interference(pipeline):
 
     pipeline.clear_session_mappings(result3)
     assert len(pipeline.mapping_store) == 0
+
+
+def test_sanitize_messages_shares_placeholder_counters(pipeline):
+    """Ensure chat sanitization shares counters across messages."""
+    messages = [
+        "Email alice@example.com",
+        "Contact bob@example.com",
+    ]
+
+    chat_result = pipeline.sanitize_messages(messages)
+
+    assert "@@EMAIL_1@@" in chat_result.sanitized_messages[0]
+    assert "@@EMAIL_2@@" in chat_result.sanitized_messages[1]
+
+    aggregated_result = SanitizedResult(
+        sanitized_text="",
+        mapping=chat_result.mapping,
+        original_text="",
+        session_id=chat_result.session_id,
+        entities=chat_result.entities,
+    )
+
+    restored_first = pipeline.restore_response(chat_result.sanitized_messages[0], aggregated_result)
+    restored_second = pipeline.restore_response(chat_result.sanitized_messages[1], aggregated_result)
+
+    assert restored_first == messages[0]
+    assert restored_second == messages[1]

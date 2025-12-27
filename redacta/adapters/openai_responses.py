@@ -64,6 +64,13 @@ def get_output_text(response: Any) -> Optional[str]:
             return response["output_text"]
         elif "text" in response:
             return response["text"]
+        elif "choices" in response and response["choices"]:
+            choice = response["choices"][0]
+            if isinstance(choice, dict):
+                if "message" in choice and isinstance(choice["message"], dict):
+                    return choice["message"].get("content")
+                if "text" in choice:
+                    return choice.get("text")
 
     return None
 
@@ -111,5 +118,12 @@ def set_output_text(response: Any, new_text: str) -> Any:
             response["output_text"] = new_text
         elif "text" in response:
             response["text"] = new_text
+        elif "choices" in response and response["choices"]:
+            choice = response["choices"][0]
+            if isinstance(choice, dict):
+                if "message" in choice and isinstance(choice["message"], dict):
+                    choice["message"]["content"] = new_text
+                elif "text" in choice:
+                    choice["text"] = new_text
 
     return response
