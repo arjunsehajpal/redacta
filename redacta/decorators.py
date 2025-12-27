@@ -3,16 +3,14 @@ import logging
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from redacta.adapters.openai_chat import (
+from redacta.adapters import (
+    extract_input_from_kwargs,
     extract_messages_from_kwargs,
+    get_output_text,
     restore_streaming_response,
     sanitize_messages,
-    set_messages_in_kwargs,
-)
-from redacta.adapters.openai_responses import (
-    extract_input_from_kwargs,
-    get_output_text,
     set_input_in_kwargs,
+    set_messages_in_kwargs,
     set_output_text,
 )
 from redacta.config import get_settings

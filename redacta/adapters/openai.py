@@ -2,13 +2,127 @@ from __future__ import annotations
 
 import copy
 import re
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Optional
 from uuid import uuid4
 
 from redacta.core.placeholders import get_placeholder_pattern, restore_from_placeholders
 from redacta.types import SanitizedChatResult
 
 
+# Responses-style helpers
+def extract_input_from_kwargs(kwargs: dict[str, Any]) -> Optional[str]:
+    """Extract the input text from OpenAI Responses kwargs."""
+    input_value = kwargs.get("input")
+
+    if isinstance(input_value, str):
+        return input_value
+    if isinstance(input_value, list) and input_value and isinstance(input_value[0], str):
+        return input_value[0]
+
+    return None
+
+
+def set_input_in_kwargs(kwargs: dict[str, Any], new_input: str) -> None:
+    """Set the input in OpenAI Responses kwargs."""
+    if "input" in kwargs:
+        if isinstance(kwargs["input"], list):
+            kwargs["input"] = [new_input]
+        else:
+            kwargs["input"] = new_input
+
+
+def get_output_text(response: Any) -> Optional[str]:
+    """Extract output text from an OpenAI response."""
+    if response is None:
+        return None
+
+    if hasattr(response, "output_text"):
+        return response.output_text
+
+    if hasattr(response, "text"):
+        return response.text
+
+    if hasattr(response, "choices") and response.choices:
+        first_choice = response.choices[0]
+        if hasattr(first_choice, "message") and hasattr(first_choice.message, "content"):
+            return first_choice.message.content
+        if hasattr(first_choice, "delta") and hasattr(first_choice.delta, "content"):
+            return first_choice.delta.content
+        if hasattr(first_choice, "text"):
+            return first_choice.text
+
+    if isinstance(response, dict):
+        if "output_text" in response:
+            return response["output_text"]
+        if "text" in response:
+            return response["text"]
+        if "choices" in response and response["choices"]:
+            choice = response["choices"][0]
+            if isinstance(choice, dict):
+                if "message" in choice and isinstance(choice["message"], dict):
+                    return choice["message"].get("content")
+                if "delta" in choice and isinstance(choice["delta"], dict):
+                    return choice["delta"].get("content")
+                if "text" in choice:
+                    return choice.get("text")
+
+    return None
+
+
+def set_output_text(response: Any, new_text: str) -> Any:
+    """Set the output text in an OpenAI response."""
+    if response is None:
+        return response
+
+    if hasattr(response, "output_text"):
+        try:
+            response.output_text = new_text
+        except AttributeError:
+            pass
+
+    if hasattr(response, "text"):
+        try:
+            response.text = new_text
+        except AttributeError:
+            pass
+
+    if hasattr(response, "choices") and response.choices:
+        first_choice = response.choices[0]
+        if hasattr(first_choice, "message") and hasattr(first_choice.message, "content"):
+            try:
+                first_choice.message.content = new_text
+            except AttributeError:
+                pass
+        elif hasattr(first_choice, "delta") and hasattr(first_choice.delta, "content"):
+            try:
+                first_choice.delta.content = new_text
+            except AttributeError:
+                pass
+        elif hasattr(first_choice, "text"):
+            try:
+                first_choice.text = new_text
+            except AttributeError:
+                pass
+
+    if isinstance(response, dict):
+        if "output_text" in response:
+            response["output_text"] = new_text
+        elif "text" in response:
+            response["text"] = new_text
+        elif "choices" in response and response["choices"]:
+            choice = response["choices"][0]
+            if isinstance(choice, dict):
+                if "message" in choice and isinstance(choice["message"], dict):
+                    choice["message"]["content"] = new_text
+                elif "delta" in choice and isinstance(choice["delta"], dict):
+                    choice["delta"]["content"] = new_text
+                elif "text" in choice:
+                    choice["text"] = new_text
+
+    return response
+
+
+# Chat helpers
 def extract_messages_from_kwargs(kwargs: dict[str, Any]) -> list[Any] | None:
     """Extract the messages array from kwargs if present and valid."""
     messages = kwargs.get("messages")

@@ -113,8 +113,7 @@ redacta/
 ├── kms/
 │   └── local.py             # Local symmetric encryption (AES-GCM)
 └── adapters/
-    ├── openai_responses.py  # OpenAI Responses helper
-    └── openai_chat.py       # OpenAI Chat Completions helper (messages + streaming)
+    └── openai.py            # OpenAI helpers (Responses + Chat/streaming)
 ```
 
 ## Configuration
