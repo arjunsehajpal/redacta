@@ -7,7 +7,11 @@ import pytest
 from redacta.core.mapping_store import MappingStore
 from redacta.core.pii_spacy import SpaCyPIIDetector
 from redacta.core.pipeline import Pipeline
-from redacta.decorators import pii_protect_openai_chat, pii_protect_openai_responses
+from redacta.decorators import (
+    pii_protect_anthropic_messages,
+    pii_protect_openai_chat,
+    pii_protect_openai_responses,
+)
 from redacta.kms.local import LocalKMS
 
 
@@ -271,6 +275,111 @@ def test_chat_decorator_verbose_default_on(pipeline, caplog):
             mock_client,
             model="gpt-4",
             messages=[{"role": "user", "content": "Email alice@example.com"}],
+        )
+
+    records = [rec for rec in caplog.records if rec.name == "redacta.pii"]
+    assert len(records) == 3
+    payloads = [json.loads(record.message) for record in records]
+    assert payloads[0]["stage"] == "sanitize_prompt"
+    assert payloads[1]["stage"] == "detected_entities"
+    assert payloads[2]["stage"] == "llm_response_placeholders"
+    assert "@@" in payloads[0]["text"]
+    assert "@@" in payloads[2]["text"]
+
+
+def test_anthropic_decorator_sanitizes_and_restores(pipeline):
+    """Anthropic decorator should sanitize messages and restore in response."""
+    mock_client = MagicMock()
+
+    @pii_protect_anthropic_messages(pipeline=pipeline, verbose=False)
+    def anthropic_call(client, **kwargs):
+        msgs = kwargs["messages"]
+        assert "@@EMAIL_1@@" in msgs[0]["content"][0]["text"]
+        assert "@@EMAIL_2@@" in msgs[1]["content"]
+        return {"content": [{"type": "text", "text": "Noted @@EMAIL_1@@ and @@EMAIL_2@@."}]}
+
+    response = anthropic_call(
+        mock_client,
+        messages=[
+            {"role": "user", "content": [{"type": "text", "text": "Email alice@example.com"}]},
+            {"role": "assistant", "content": "Contact bob@example.com"},
+        ],
+    )
+
+    restored_text = response["content"][0]["text"]
+    assert "alice@example.com" in restored_text
+    assert "bob@example.com" in restored_text
+    assert "@@EMAIL" not in restored_text
+
+
+def test_anthropic_decorator_disabled_protection(monkeypatch, pipeline):
+    """Anthropic decorator should pass through when protection disabled."""
+    monkeypatch.setenv("REDACTA_ENABLE_PII_PROTECTION", "false")
+    from redacta.config.settings import Settings
+
+    Settings.model_rebuild()
+
+    observed = {}
+
+    @pii_protect_anthropic_messages(pipeline=pipeline, verbose=False)
+    def anthropic_call(client, **kwargs):
+        observed["messages"] = kwargs["messages"]
+        return {"content": [{"type": "text", "text": kwargs['messages'][0]['content'][0]['text']}]}  # type: ignore[index]
+
+    response = anthropic_call(
+        MagicMock(),
+        messages=[{"role": "user", "content": [{"type": "text", "text": "Email alice@example.com"}]}],
+    )
+
+    assert observed["messages"][0]["content"][0]["text"] == "Email alice@example.com"
+    assert response["content"][0]["text"] == "Email alice@example.com"
+
+    monkeypatch.delenv("REDACTA_ENABLE_PII_PROTECTION")
+    Settings.model_rebuild()
+
+
+def test_anthropic_streaming_restores_placeholders(pipeline):
+    """Anthropic streaming responses should restore placeholders across chunks."""
+    mock_client = MagicMock()
+
+    chunks = [
+        {"delta": {"text": "Hi @@EMAIL_1"}},
+        {"delta": {"text": "@@"}},
+    ]
+
+    def chunk_generator():
+        for chunk in chunks:
+            yield chunk
+
+    @pii_protect_anthropic_messages(pipeline=pipeline, verbose=False)
+    def anthropic_call(client, **kwargs):
+        return chunk_generator()
+
+    stream = anthropic_call(
+        mock_client,
+        stream=True,
+        messages=[{"role": "user", "content": [{"type": "text", "text": "Email alice@example.com"}]}],
+    )
+
+    restored_chunks = list(stream)
+    restored_text = "".join(c["delta"]["text"] for c in restored_chunks if "delta" in c)
+
+    assert "alice@example.com" in restored_text
+    assert "@@EMAIL" not in restored_text
+
+
+def test_anthropic_decorator_verbose_default_on(pipeline, caplog):
+    """Anthropic decorator defaults to verbose logging unless disabled."""
+    mock_client = MagicMock()
+
+    @pii_protect_anthropic_messages(pipeline=pipeline)
+    def anthropic_call(client, **kwargs):
+        return {"content": [{"type": "text", "text": "Thanks @@EMAIL_1@@!"}]}
+
+    with caplog.at_level(logging.INFO, logger="redacta.pii"):
+        anthropic_call(
+            mock_client,
+            messages=[{"role": "user", "content": [{"type": "text", "text": "Email alice@example.com"}]}],
         )
 
     records = [rec for rec in caplog.records if rec.name == "redacta.pii"]

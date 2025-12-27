@@ -14,6 +14,7 @@ Redacta automatically detects and redacts personally identifiable information (P
 - **Configurable** - Environment-based configuration with sensible defaults
 - **Verbose Logging** - Optional JSON logs of sanitized prompts, detected entities, and placeholder responses
 - **Chat Completions Support** - Protects `client.chat.completions.create()` (messages + streaming)
+- **Anthropic Messages Support** - Protects `anthropic.Client.messages.create()` (messages + streaming)
 
 ## Installation
 
@@ -37,7 +38,12 @@ python3 -m spacy download en_core_web_sm
 
 ```python
 from openai import OpenAI
-from redacta import pii_protect_openai_chat, pii_protect_openai_responses, build_default_pipeline
+from redacta import (
+    pii_protect_anthropic_messages,
+    pii_protect_openai_chat,
+    pii_protect_openai_responses,
+    build_default_pipeline,
+)
 
 # Build the PII protection pipeline
 pipeline = build_default_pipeline()
@@ -76,6 +82,27 @@ response = chat(
 )
 
 print(response.choices[0].message.content)
+
+# Anthropic Messages (streaming supported)
+from anthropic import Anthropic
+
+anthropic_client = Anthropic()
+
+@pii_protect_anthropic_messages(pipeline=pipeline)
+def anthropic_ask(client, **kwargs):
+    return client.messages.create(**kwargs)
+
+anthropic_response = anthropic_ask(
+    anthropic_client,
+    model="claude-3-haiku-20240307",
+    messages=[
+        {"role": "user", "content": [{"type": "text", "text": "Email alice@example.com"}]},
+        {"role": "assistant", "content": "Contact bob@example.com"},
+    ],
+    stream=False,  # set True for streaming responses; placeholders are restored chunk-by-chunk
+)
+
+print(anthropic_response["content"][0]["text"])
 ```
 
 ## How It Works
@@ -113,7 +140,8 @@ redacta/
 ├── kms/
 │   └── local.py             # Local symmetric encryption (AES-GCM)
 └── adapters/
-    └── openai.py            # OpenAI helpers (Responses + Chat/streaming)
+    ├── openai.py            # OpenAI helpers (Responses + Chat/streaming)
+    └── anthropic.py         # Anthropic Messages helpers (messages + streaming)
 ```
 
 ## Configuration
